@@ -1,66 +1,65 @@
 #!/usr/bin/python3
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Sep  1 14:42:23 2020
-@authors: Robinson Montes
-          Mauricio Olarte
-"""
-from flask import Blueprint, jsonify, request, abort
-from api.v1.views import app_views
+"""Review API endpoints."""
+from flask import jsonify, request, abort, make_response
 from models import storage
-from models.place import Place
 from models.review import Review
+from models.place import Place
+from models.user import User
+from api.v1.views import app_views
 
 
-@app_views.route('/places/<string:place_id>/reviews', methods=['GET', 'POST'],
-                 strict_slashes=False)
-def places_reviews(place_id):
-    """Create a new view for City objects that handles all default
-    RestFul API actions.
-    """
-    place = storage.get('Place', place_id)
-    if place is None:
+@app_views.route('/places/<string:place_id>/reviews',
+                 methods=['GET', 'POST'], strict_slashes=False)
+def place_reviews(place_id):
+    """Handles GET and POST requests for reviews of a place."""
+    place = storage.get(Place, place_id)
+    if not place:
         abort(404)
+
     if request.method == 'GET':
-        return jsonify([val.to_dict() for val in place.reviews])
+        return jsonify([review.to_dict() for review in place.reviews])
+
     elif request.method == 'POST':
-        post = request.get_json()
-        if post is None or type(post) != dict:
+        data = request.get_json()
+        if not data or type(data) is not dict:
             return jsonify({'error': 'Not a JSON'}), 400
-        # elif post.get('place_id') is None:
-        #     abort(404)
-        elif post.get('user_id') is None:
+        if 'user_id' not in data:
             return jsonify({'error': 'Missing user_id'}), 400
-        elif post.get('text') is None:
-            return jsonify({'error': 'Missing text'}), 400
-        elif storage.get('User', post.get('user_id')) is None:
+        user_id = data.get('user_id')
+        if not storage.get('User', user_id):
             abort(404)
-        new_review = Review(place_id=place_id, **post)
+        if 'text' not in data:
+            return jsonify({'error': 'Missing text'}), 400
+
+        new_review = Review(place_id=place_id, **data)
         new_review.save()
-        return jsonify(new_review.to_dict()), 201
+        return make_response(jsonify(new_review.to_dict()), 201)
 
 
 @app_views.route('/reviews/<string:review_id>',
                  methods=['GET', 'PUT', 'DELETE'], strict_slashes=False)
-def get_place_review_id(review_id):
-    """Retrieves a city object with a specific id"""
-    review = storage.get('Review', review_id)
-    if review is None:
+def review(review_id):
+    """Handles GET, PUT, and DELETE requests for a review."""
+    review = storage.get(Review, review_id)
+    if not review:
         abort(404)
-    elif request.method == 'GET':
+
+    if request.method == 'GET':
         return jsonify(review.to_dict())
+
     elif request.method == 'DELETE':
-        review = storage.get('Review', review_id)
         storage.delete(review)
         storage.save()
         return jsonify({}), 200
+
     elif request.method == 'PUT':
-        put = request.get_json()
-        if put is None or type(put) != dict:
+        data = request.get_json()
+        if not data or type(data) is not dict:
             return jsonify({'error': 'Not a JSON'}), 400
-        for key, value in put.items():
-            if key not in ['id', 'created_at', 'updated_at',
-                           'place_id', 'user_id']:
+
+        ignore = ['id', 'user_id', 'place_id', 'created_at', 'updated_at']
+        for key, value in data.items():
+            if key not in ignore:
                 setattr(review, key, value)
-                storage.save()
+        storage.save()
         return jsonify(review.to_dict()), 200
